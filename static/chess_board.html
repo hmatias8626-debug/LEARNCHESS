@@ -49,6 +49,7 @@ c.addEventListener('click', function(e) {
 window.addEventListener('message', function(e) {
   var d = e.data;
   if (!d || d.type !== 'streamlit:render') return;
+  clearInterval(readyTimer);
   var a = d.args || {};
   SQ = a.sq || 50;
   c.width  = SQ * 8;
@@ -68,9 +69,11 @@ window.addEventListener('message', function(e) {
   );
 });
 
-window.parent.postMessage(
-  {type: 'streamlit:setComponentReady', apiVersion: 1}, '*'
-);
+// Retry hasta que el padre confirme con un render (timing de carga del iframe)
+var readyTimer = setInterval(function() {
+  window.parent.postMessage({type: 'streamlit:componentReady', apiVersion: 1}, '*');
+}, 50);
+window.parent.postMessage({type: 'streamlit:componentReady', apiVersion: 1}, '*');
 </script>
 </body>
 </html>
