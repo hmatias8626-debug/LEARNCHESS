@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>¿Quién lo hizo primero?</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Pantalla 1: Inicio -->
+    <div id="pantalla-inicio" class="pantalla activa">
+        <h1>¿Quién lo hizo<br>primero?</h1>
+        <p class="subtitulo">Elegí categoría y dificultad</p>
+
+        <div class="seccion">
+            <h2>Categoría</h2>
+            <div class="opciones-selector">
+                <button class="btn-selector activo" data-categoria="todas">Todas</button>
+                <button class="btn-selector" data-categoria="deportes">Deportes</button>
+                <button class="btn-selector" data-categoria="personas">Personas</button>
+                <button class="btn-selector" data-categoria="paises">Países</button>
+                <button class="btn-selector" data-categoria="provincias">Provincias</button>
+                <button class="btn-selector" data-categoria="sucesos">Sucesos</button>
+            </div>
+        </div>
+
+        <div class="seccion">
+            <h2>Dificultad</h2>
+            <div class="opciones-selector">
+                <button class="btn-selector activo" data-dificultad="todas">Todas</button>
+                <button class="btn-selector" data-dificultad="facil">Fácil</button>
+                <button class="btn-selector" data-dificultad="medio">Medio</button>
+                <button class="btn-selector" data-dificultad="dificil">Difícil</button>
+            </div>
+        </div>
+
+        <button id="btn-jugar" class="btn-principal">¡Jugar!</button>
+    </div>
+
+    <!-- Pantalla 2: Juego -->
+    <div id="pantalla-juego" class="pantalla">
+        <div class="info-superior">
+            <span id="info-categoria" class="etiqueta"></span>
+            <span class="racha-badge">Racha: <strong id="racha-valor">0</strong></span>
+        </div>
+        <div class="pregunta-container">
+            <p id="pregunta-texto"></p>
+        </div>
+        <div class="opciones-juego">
+            <button id="opcion-a" class="btn-opcion"></button>
+            <button id="opcion-b" class="btn-opcion"></button>
+        </div>
+    </div>
+
+    <!-- Pantalla 3: Resultado -->
+    <div id="pantalla-resultado" class="pantalla">
+        <div id="resultado-icono" class="resultado-icono"></div>
+        <h2 id="resultado-titulo"></h2>
+        <p id="resultado-explicacion"></p>
+        <div class="racha-badge grande">
+            Racha actual: <strong id="racha-resultado-valor">0</strong>
+        </div>
+        <button id="btn-siguiente" class="btn-principal">Siguiente pregunta</button>
+        <button id="btn-volver" class="btn-secundario">Volver al inicio</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

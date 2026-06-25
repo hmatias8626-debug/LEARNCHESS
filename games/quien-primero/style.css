@@ -1,0 +1,258 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Pantallas */
+.pantalla {
+    display: none;
+    width: 100%;
+    max-width: 680px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+}
+
+.pantalla.activa {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.4rem;
+}
+
+/* Títulos */
+h1 {
+    font-size: 2.4rem;
+    color: #e94560;
+    line-height: 1.2;
+}
+
+.subtitulo {
+    color: #999;
+    font-size: 0.95rem;
+}
+
+h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #888;
+    margin-bottom: 0.6rem;
+}
+
+/* Sección de selección */
+.seccion {
+    width: 100%;
+}
+
+.opciones-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.btn-selector {
+    background: #16213e;
+    color: #bbb;
+    border: 2px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 0.45rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.btn-selector:hover {
+    border-color: #e94560;
+    color: #fff;
+}
+
+.btn-selector.activo {
+    background: #e94560;
+    border-color: #e94560;
+    color: #fff;
+}
+
+/* Botón principal */
+.btn-principal {
+    background: #e94560;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 0.85rem 2.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.btn-principal:hover {
+    background: #c7304a;
+    transform: scale(1.02);
+}
+
+/* Botón secundario */
+.btn-secundario {
+    background: transparent;
+    color: #888;
+    border: 2px solid #2a2a4a;
+    border-radius: 12px;
+    padding: 0.65rem 1.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-secundario:hover {
+    border-color: #e94560;
+    color: #fff;
+}
+
+/* Info superior del juego */
+.info-superior {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.etiqueta {
+    font-size: 0.8rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.racha-badge {
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.racha-badge strong {
+    color: #e94560;
+    font-size: 1.1rem;
+}
+
+.racha-badge.grande {
+    font-size: 1rem;
+}
+
+.racha-badge.grande strong {
+    font-size: 1.4rem;
+}
+
+/* Pregunta */
+.pregunta-container {
+    background: #16213e;
+    border-radius: 16px;
+    padding: 1.8rem 1.5rem;
+    width: 100%;
+}
+
+#pregunta-texto {
+    font-size: 1.25rem;
+    line-height: 1.5;
+    color: #eee;
+}
+
+/* Opciones del juego */
+.opciones-juego {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    width: 100%;
+    justify-content: center;
+}
+
+.btn-opcion {
+    flex: 0 0 35%;
+    background: #16213e;
+    color: #ddd;
+    border: 2px solid #2a2a4a;
+    border-radius: 12px;
+    padding: 0.9rem 0.5rem;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: border-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+.btn-opcion:hover:not(:disabled) {
+    border-color: #e94560;
+    color: #fff;
+    transform: scale(1.02);
+}
+
+.btn-opcion:disabled {
+    cursor: default;
+}
+
+.btn-opcion.correcto {
+    background: #0f3320;
+    border-color: #2ecc71;
+    color: #2ecc71;
+}
+
+.btn-opcion.incorrecto {
+    background: #3a0f0f;
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+
+/* Resultado */
+.resultado-icono {
+    font-size: 3.5rem;
+}
+
+#resultado-titulo {
+    font-size: 1.7rem;
+    font-weight: 700;
+}
+
+#resultado-titulo.correcto {
+    color: #2ecc71;
+}
+
+#resultado-titulo.incorrecto {
+    color: #e74c3c;
+}
+
+#resultado-explicacion {
+    color: #bbb;
+    line-height: 1.65;
+    font-size: 0.95rem;
+    max-width: 520px;
+}
+
+/* Responsive mobile */
+@media (max-width: 480px) {
+    h1 {
+        font-size: 1.8rem;
+    }
+
+    #pregunta-texto {
+        font-size: 1.05rem;
+    }
+
+    .btn-opcion {
+        flex: 0 0 44%;
+        font-size: 0.88rem;
+        padding: 0.75rem 0.3rem;
+    }
+
+    .pantalla {
+        padding: 1.2rem 1rem;
+    }
+}

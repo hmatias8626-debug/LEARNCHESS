@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { background:transparent; overflow:hidden; }
+canvas { display:block; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="b"></canvas>
+<script>
+var c   = document.getElementById('b');
+var ctx = c.getContext('2d');
+var SQ  = 50;
+var sel = null;
+var img = new Image();
+
+function draw() {
+  if (!img.complete || !img.naturalWidth) return;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  if (sel !== null) {
+    ctx.fillStyle = 'rgba(246,246,105,0.6)';
+    ctx.fillRect(sel.col * SQ, sel.row * SQ, SQ, SQ);
+  }
+}
+
+c.addEventListener('click', function(e) {
+  var r   = c.getBoundingClientRect();
+  var px  = Math.round((e.clientX - r.left) * c.width  / r.width);
+  var py  = Math.round((e.clientY - r.top)  * c.height / r.height);
+  var col = Math.floor(px / SQ);
+  var row = Math.floor(py / SQ);
+  if (sel && sel.col === col && sel.row === row) {
+    sel = null;
+  } else if (sel) {
+    sel = null;
+  } else {
+    sel = {col: col, row: row};
+  }
+  draw();
+  window.parent.postMessage(
+    {type: 'streamlit:setComponentValue', value: {x: px, y: py}}, '*'
+  );
+});
+
+window.addEventListener('message', function(e) {
+  var d = e.data;
+  if (!d || d.type !== 'streamlit:render') return;
+  clearInterval(readyTimer);
+  var a = d.args || {};
+  SQ = a.sq || 50;
+  c.width  = SQ * 8;
+  c.height = SQ * 8;
+  if (a.sel_col !== undefined && a.sel_col >= 0) {
+    sel = {col: a.sel_col, row: a.sel_row};
+  } else {
+    sel = null;
+  }
+  if (a.img_b64) {
+    img.onload = draw;
+    img.src = 'data:image/png;base64,' + a.img_b64;
+    if (img.complete && img.naturalWidth) draw();
+  }
+  window.parent.postMessage(
+    {type: 'streamlit:setFrameHeight', height: c.height + 4}, '*'
+  );
+});
+
+// Reintentar hasta recibir el primer render
+var readyTimer = setInterval(function() {
+  window.parent.postMessage({type: 'streamlit:componentReady', apiVersion: 1}, '*');
+}, 50);
+window.parent.postMessage({type: 'streamlit:componentReady', apiVersion: 1}, '*');
+</script>
+</body>
+</html>
