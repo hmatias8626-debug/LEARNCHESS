@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 8px; display: flex; justify-content: center; background: transparent; }
+    #board { width: 400px; }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css" />
+</head>
+<body>
+  <div id="board"></div>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script>
+    function toStreamlit(type, payload) {
+      window.parent.postMessage(Object.assign({ type: type }, payload), "*");
+    }
+
+    var game = new Chess();
+    var board = null;
+    var interactive = false;
+    var pendingFrom = null;   // para click-click: casilla origen seleccionada
+    var movingByDrag = false; // evita que el handler de click procese drops
+
+    function sendMove(uci) {
+      pendingFrom = null;
+      toStreamlit("streamlit:setComponentValue", { value: uci, dataType: "json" });
+    }
+
+    // --- Drag-and-drop ---
+
+    function onDragStart(source, piece) {
+      if (!interactive || game.game_over()) return false;
+      if (game.turn() === 'w' && piece.startsWith('b')) return false;
+      if (game.turn() === 'b' && piece.startsWith('w')) return false;
+      movingByDrag = true;
+      pendingFrom = null;
+      return true;
+    }
+
+    function onDrop(source, target) {
+      movingByDrag = false;
+      if (source === target) return 'snapback';
+      var move = game.move({ from: source, to: target, promotion: 'q' });
+      if (move === null) return 'snapback';
+      sendMove(move.from + move.to + (move.flags.indexOf('p') !== -1 ? 'q' : ''));
+    }
+
+    function onSnapEnd() {
+      board.position(game.fen());
+    }
+
+    // --- Click-click ---
+
+    $(document).on('click', '.square-55d63', function () {
+      if (!interactive || movingByDrag) {
+        movingByDrag = false;
+        return;
+      }
+      var square = $(this).data('square');
+      if (!square) return;
+
+      if (pendingFrom === null) {
+        var piece = game.get(square);
+        if (piece && piece.color === game.turn()) {
+          pendingFrom = square;
+        }
+      } else {
+        var from = pendingFrom;
+        pendingFrom = null;
+        if (from === square) return; // misma casilla: deseleccionar
+
+        var move = game.move({ from: from, to: square, promotion: 'q' });
+        if (move) {
+          board.position(game.fen());
+          sendMove(move.from + move.to + (move.flags.indexOf('p') !== -1 ? 'q' : ''));
+        } else {
+          // Si hizo clic en otra pieza propia, seleccionarla
+          var piece = game.get(square);
+          if (piece && piece.color === game.turn()) {
+            pendingFrom = square;
+          }
+        }
+      }
+    });
+
+    // --- Inicialización / actualización ---
+
+    function initBoard(fen, orientation, isInteractive) {
+      interactive = isInteractive !== false;
+      pendingFrom = null;
+
+      game = new Chess();
+      if (fen && fen !== 'start') game.load(fen);
+
+      if (!board) {
+        board = Chessboard('board', {
+          position: fen || 'start',
+          orientation: orientation || 'white',
+          draggable: true,
+          onDragStart: onDragStart,
+          onDrop: onDrop,
+          onSnapEnd: onSnapEnd,
+          pieceTheme: 'https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/img/chesspieces/wikipedia/{piece}.png'
+        });
+      } else {
+        board.position(fen || 'start', false);
+        board.orientation(orientation || 'white');
+      }
+
+      toStreamlit("streamlit:setFrameHeight", { height: document.body.scrollHeight + 16 });
+    }
+
+    // --- Protocolo Streamlit ---
+
+    window.addEventListener("message", function (event) {
+      if (event.data && event.data.type === "streamlit:render") {
+        var args = event.data.args || {};
+        initBoard(args.fen, args.orientation, args.interactive);
+      }
+    });
+
+    toStreamlit("streamlit:componentReady", { apiVersion: 1 });
+  </script>
+</body>
+</html>

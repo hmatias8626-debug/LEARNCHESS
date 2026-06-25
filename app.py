@@ -6,16 +6,27 @@ Ejecutar con:  streamlit run app.py
 """
 
 import random
+from pathlib import Path
 
 import chess
 import chess.pgn
-import chess.svg
 import streamlit as st
+from streamlit.components.v1 import declare_component
 
 import auth
 import db
 import bot_logic
 from chess_engine import MotorAjedrez
+
+_chess_component = declare_component(
+    "chess_board",
+    path=str(Path(__file__).parent / "chess_component"),
+)
+
+
+def tablero_interactivo(fen: str, orientation: str = "white", interactive: bool = True):
+    """Renderiza el tablero interactivo y retorna el movimiento UCI elegido por el usuario, o None."""
+    return _chess_component(fen=fen, orientation=orientation, interactive=interactive, key="chess_board")
 
 st.set_page_config(page_title="ChessLearnerBot", page_icon="♟️", layout="centered")
 
@@ -234,18 +245,12 @@ def elegir_color_y_empezar(usuario: dict) -> None:
         st.rerun()
 
 
-def mostrar_tablero(tablero: chess.Board) -> None:
-    orientacion_blancas = color_usuario_es_blancas()
-    svg = chess.svg.board(tablero, size=400, orientation=chess.WHITE if orientacion_blancas else chess.BLACK)
-    st.markdown(f'<div style="display:flex;justify-content:center">{svg}</div>', unsafe_allow_html=True)
-
-
 def panel_de_juego(usuario: dict) -> None:
     tablero: chess.Board = st.session_state["tablero"]
-
-    mostrar_tablero(tablero)
+    orientacion = "white" if color_usuario_es_blancas() else "black"
 
     if tablero.is_game_over():
+        tablero_interactivo(tablero.fen(), orientacion, interactive=False)
         if not st.session_state.get("partida_terminada"):
             finalizar_partida(usuario)
             st.rerun()
@@ -253,15 +258,19 @@ def panel_de_juego(usuario: dict) -> None:
         return
 
     if turno_del_usuario(tablero):
-        st.write("Es tu turno.")
-        legales = list(tablero.legal_moves)
-        opciones_san = {tablero.san(m): m for m in legales}
-        san_elegido = st.selectbox("Elegí tu jugada", sorted(opciones_san.keys()))
-        if st.button("Jugar movimiento", type="primary"):
-            jugar_movimiento_usuario(opciones_san[san_elegido])
-            st.rerun()
+        move_uci = tablero_interactivo(tablero.fen(), orientacion, interactive=True)
+        st.caption("Es tu turno — arrastrá o hacé clic en una pieza y luego en el destino.")
+        if move_uci:
+            try:
+                jugada = chess.Move.from_uci(move_uci)
+                if jugada in tablero.legal_moves:
+                    jugar_movimiento_usuario(jugada)
+                    st.rerun()
+            except (ValueError, AttributeError):
+                pass
     else:
-        st.write("Turno del bot... 🤖")
+        tablero_interactivo(tablero.fen(), orientacion, interactive=False)
+        st.caption("Turno del bot...")
         jugar_movimiento_bot(usuario)
         st.rerun()
 
