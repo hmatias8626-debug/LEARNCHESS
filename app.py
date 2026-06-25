@@ -31,19 +31,24 @@ SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
 # ---------------------------------------------------------------------------
 
 @st.cache_data(show_spinner=False)
-def _render_png(fen: str, flip: bool, selected_sq: int | None = None) -> bytes:
-    """PNG cacheado por posición + casilla seleccionada."""
+def _render_png(fen: str, flip: bool) -> bytes:
+    """PNG cacheado por posición."""
     orientation = chess.BLACK if flip else chess.WHITE
-    fill = {selected_sq: "#f6f669"} if selected_sq is not None else {}
-    svg = chess.svg.board(
-        chess.Board(fen), size=SQ * 8, orientation=orientation,
-        coordinates=False, fill=fill,
-    )
+    svg = chess.svg.board(chess.Board(fen), size=SQ * 8, orientation=orientation, coordinates=False)
     return cairosvg.svg2png(bytestring=svg.encode())
 
 
 def board_to_pil(tablero: chess.Board, flip: bool, selected_sq: int | None = None) -> Image.Image:
-    return Image.open(io.BytesIO(_render_png(tablero.fen(), flip, selected_sq)))
+    img = Image.open(io.BytesIO(_render_png(tablero.fen(), flip))).convert("RGBA")
+    if selected_sq is not None:
+        from PIL import ImageDraw
+        file_idx = chess.square_file(selected_sq)
+        rank_idx = chess.square_rank(selected_sq)
+        x = ((7 - file_idx) if flip else file_idx) * SQ
+        y = (rank_idx if flip else (7 - rank_idx)) * SQ
+        draw = ImageDraw.Draw(img, "RGBA")
+        draw.rectangle([x, y, x + SQ - 1, y + SQ - 1], fill=(246, 246, 105, 150))
+    return img.convert("RGB")
 
 
 def click_to_square(x: int, y: int, flip: bool) -> chess.Square:
