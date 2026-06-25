@@ -30,11 +30,16 @@ SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
 # Utilidades de tablero
 # ---------------------------------------------------------------------------
 
-def board_to_pil(tablero: chess.Board, flip: bool) -> Image.Image:
+@st.cache_data(show_spinner=False)
+def _render_png(fen: str, flip: bool) -> bytes:
+    """PNG cacheado por posición — cairosvg solo corre cuando la posición cambia."""
     orientation = chess.BLACK if flip else chess.WHITE
-    svg = chess.svg.board(tablero, size=SQ * 8, orientation=orientation, coordinates=False)
-    png = cairosvg.svg2png(bytestring=svg.encode())
-    return Image.open(io.BytesIO(png))
+    svg = chess.svg.board(chess.Board(fen), size=SQ * 8, orientation=orientation, coordinates=False)
+    return cairosvg.svg2png(bytestring=svg.encode())
+
+
+def board_to_pil(tablero: chess.Board, flip: bool) -> Image.Image:
+    return Image.open(io.BytesIO(_render_png(tablero.fen(), flip)))
 
 
 def click_to_square(x: int, y: int, flip: bool) -> chess.Square:
@@ -271,8 +276,10 @@ def panel_de_juego(usuario: dict) -> None:
         mostrar_resultado_final(usuario)
         return
 
+    # El tablero siempre está visible con el mismo widget (sin cambiar de st.image a otro)
+    coords = streamlit_image_coordinates(board_to_pil(tablero, flip), key="chess_click")
+
     if turno_del_usuario(tablero):
-        coords = streamlit_image_coordinates(board_to_pil(tablero, flip), key="chess_click")
         st.caption("Es tu turno — hacé clic en una pieza y luego en el destino.")
 
         if coords:
@@ -286,7 +293,7 @@ def panel_de_juego(usuario: dict) -> None:
                     piece = tablero.piece_at(sq)
                     if piece and piece.color == tablero.turn:
                         st.session_state["selected_square"] = sq
-                        st.rerun()
+                        # Sin st.rerun(): el tablero no cambió, el script termina solo
                 else:
                     st.session_state.pop("selected_square", None)
                     if sq != selected:
@@ -296,14 +303,16 @@ def panel_de_juego(usuario: dict) -> None:
                             jugada = chess.Move(selected, sq, promotion=chess.QUEEN)
                         if jugada in tablero.legal_moves:
                             jugar_movimiento_usuario(jugada)
+                            # Respuesta del bot en el mismo ciclo: un solo rerun
+                            if not tablero.is_game_over() and not turno_del_usuario(tablero):
+                                jugar_movimiento_bot(usuario)
                             st.rerun()
                         else:
                             piece = tablero.piece_at(sq)
                             if piece and piece.color == tablero.turn:
                                 st.session_state["selected_square"] = sq
-                            st.rerun()
+                            # Sin st.rerun(): el tablero no cambió
     else:
-        st.image(board_to_pil(tablero, flip))
         st.caption("Turno del bot...")
         jugar_movimiento_bot(usuario)
         st.rerun()
