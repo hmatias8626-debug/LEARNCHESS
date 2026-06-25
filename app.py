@@ -248,9 +248,19 @@ def panel_lateral(usuario: dict) -> None:
         for p in historial:
             st.write(f"{p['creada_en'][:10]} · {p['color_usuario']} · {p['resultado']} · nivel {p['nivel_bot']}")
 
+    st.sidebar.divider()
+    col_a, col_j = st.sidebar.columns(2)
+    if col_a.button("♟️ Ajedrez", use_container_width=True):
+        st.session_state["pantalla"] = "ajedrez"
+        st.rerun()
+    if col_j.button("🎮 Juegos", use_container_width=True):
+        st.session_state["pantalla"] = "juegos"
+        st.rerun()
+
     if st.sidebar.button("Cerrar sesión"):
         for clave in ["usuario", "tablero", "historial_san", "color_usuario",
-                      "partida_terminada", "ultima_leccion", "selected_square", "last_click_id"]:
+                      "partida_terminada", "ultima_leccion", "selected_square", "last_click_id",
+                      "pantalla"]:
             st.session_state.pop(clave, None)
         st.rerun()
 
@@ -360,6 +370,32 @@ def mostrar_resultado_final(usuario: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Pantalla de otros juegos
+# ---------------------------------------------------------------------------
+
+def pantalla_juegos() -> None:
+    st.title("🎮 Otros juegos")
+    st.caption("Juegos disponibles — se irán sumando más.")
+    st.write("")
+
+    with st.container(border=True):
+        col_txt, col_btn = st.columns([3, 1])
+        with col_txt:
+            st.subheader("¿Quién lo hizo primero?")
+            st.write("Trivia de deportes, historia, países, provincias y sucesos. "
+                     "Elegí categoría y dificultad, y a ver cuánto podés estirar la racha.")
+        with col_btn:
+            st.write("")
+            st.write("")
+            st.link_button(
+                "▶ Jugar",
+                "https://hmatias8626-debug.github.io/LEARNCHESS/games/quien-primero/",
+                use_container_width=True,
+                type="primary",
+            )
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -370,6 +406,10 @@ def main() -> None:
 
     usuario = st.session_state["usuario"]
     panel_lateral(usuario)
+
+    if st.session_state.get("pantalla") == "juegos":
+        pantalla_juegos()
+        return
 
     st.title("♟️ ChessLearnerBot")
 
