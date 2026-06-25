@@ -6,7 +6,6 @@ Ejecutar con:  streamlit run app.py
 """
 
 import random
-from pathlib import Path
 
 import chess
 import chess.pgn
@@ -20,7 +19,7 @@ from chess_engine import MotorAjedrez
 
 _chess_component = declare_component(
     "chess_board",
-    path=str(Path(__file__).parent / "chess_component"),
+    url="https://cdn.jsdelivr.net/gh/hmatias8626-debug/LEARNCHESS@main/chess_component/index.html",
 )
 
 
