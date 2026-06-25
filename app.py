@@ -5,7 +5,6 @@ ChessLearnerBot — MVP online con Streamlit + Supabase + Stockfish.
 Ejecutar con:  streamlit run app.py
 """
 
-import base64
 import io
 import random
 
@@ -14,7 +13,8 @@ import chess
 import chess.pgn
 import chess.svg
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageDraw
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 import auth
 import db
@@ -24,18 +24,6 @@ from chess_engine import MotorAjedrez, elo_aproximado
 st.set_page_config(page_title="ChessLearnerBot", page_icon="♟️", layout="centered")
 
 SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
-
-# ---------------------------------------------------------------------------
-# Componente canvas — highlight instantáneo sin round-trip al servidor
-# Archivo: static/chess_board.html  (servido por enableStaticServing)
-# ---------------------------------------------------------------------------
-
-@st.cache_resource
-def _get_chess_component():
-    # HTML autónomo en GitHub, servido por jsDelivr (sin dependencias externas)
-    url = "https://cdn.jsdelivr.net/gh/hmatias8626-debug/LEARNCHESS@main/chess_component/index.html"
-    return st.components.v1.declare_component("chess_click", url=url)
-
 
 # ---------------------------------------------------------------------------
 # Utilidades de tablero
@@ -49,12 +37,16 @@ def _render_png(fen: str, flip: bool) -> bytes:
     return cairosvg.svg2png(bytestring=svg.encode())
 
 
-def board_to_pil(tablero: chess.Board, flip: bool) -> Image.Image:
-    return Image.open(io.BytesIO(_render_png(tablero.fen(), flip)))
-
-
-def board_to_b64(tablero: chess.Board, flip: bool) -> str:
-    return base64.b64encode(_render_png(tablero.fen(), flip)).decode()
+def board_to_pil(tablero: chess.Board, flip: bool, selected_sq: int | None = None) -> Image.Image:
+    img = Image.open(io.BytesIO(_render_png(tablero.fen(), flip))).convert("RGBA")
+    if selected_sq is not None:
+        f = chess.square_file(selected_sq)
+        r = chess.square_rank(selected_sq)
+        x = ((7 - f) if flip else f) * SQ
+        y = (r if flip else (7 - r)) * SQ
+        draw = ImageDraw.Draw(img, "RGBA")
+        draw.rectangle([x, y, x + SQ - 1, y + SQ - 1], fill=(246, 246, 105, 160))
+    return img.convert("RGB")
 
 
 def click_to_square(x: int, y: int, flip: bool) -> chess.Square:
@@ -295,25 +287,8 @@ def panel_de_juego(usuario: dict) -> None:
         mostrar_resultado_final(usuario)
         return
 
-    # sel_col/sel_row le dicen al componente qué casilla resaltar según el servidor
     selected = st.session_state.get("selected_square")
-    if selected is not None:
-        _f = chess.square_file(selected)
-        _r = chess.square_rank(selected)
-        sel_col = (7 - _f) if flip else _f
-        sel_row = _r if flip else (7 - _r)
-    else:
-        sel_col, sel_row = -1, -1
-
-    coords = _get_chess_component()(
-        img_b64=board_to_b64(tablero, flip),
-        fen=tablero.fen(),
-        sq=SQ,
-        sel_col=sel_col,
-        sel_row=sel_row,
-        key="chess_click",
-        default=None,
-    )
+    coords = streamlit_image_coordinates(board_to_pil(tablero, flip, selected), key="chess_click")
 
     if turno_del_usuario(tablero):
         st.caption("Es tu turno — hacé clic en una pieza y luego en el destino.")

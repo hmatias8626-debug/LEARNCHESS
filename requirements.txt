@@ -2,3 +2,4 @@ streamlit>=1.38
 chess>=1.10
 supabase>=2.4.0
 cairosvg>=2.7
+streamlit-image-coordinates>=0.1.6
