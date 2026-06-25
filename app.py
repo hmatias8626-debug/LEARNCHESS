@@ -5,29 +5,44 @@ ChessLearnerBot — MVP online con Streamlit + Supabase + Stockfish.
 Ejecutar con:  streamlit run app.py
 """
 
+import io
 import random
 
+import cairosvg
 import chess
 import chess.pgn
+import chess.svg
 import streamlit as st
-from streamlit.components.v1 import declare_component
+from PIL import Image
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 import auth
 import db
 import bot_logic
 from chess_engine import MotorAjedrez
 
-_chess_component = declare_component(
-    "chess_board",
-    url="https://cdn.jsdelivr.net/gh/hmatias8626-debug/LEARNCHESS@main/chess_component/index.html",
-)
-
-
-def tablero_interactivo(fen: str, orientation: str = "white", interactive: bool = True):
-    """Renderiza el tablero interactivo y retorna el movimiento UCI elegido por el usuario, o None."""
-    return _chess_component(fen=fen, orientation=orientation, interactive=interactive, key="chess_board")
-
 st.set_page_config(page_title="ChessLearnerBot", page_icon="♟️", layout="centered")
+
+SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
+
+
+# ---------------------------------------------------------------------------
+# Utilidades de tablero
+# ---------------------------------------------------------------------------
+
+def board_to_pil(tablero: chess.Board, flip: bool) -> Image.Image:
+    orientation = chess.BLACK if flip else chess.WHITE
+    svg = chess.svg.board(tablero, size=SQ * 8, orientation=orientation, coordinates=False)
+    png = cairosvg.svg2png(bytestring=svg.encode())
+    return Image.open(io.BytesIO(png))
+
+
+def click_to_square(x: int, y: int, flip: bool) -> chess.Square:
+    file_idx = min(7, max(0, x // SQ))
+    rank_idx = min(7, max(0, y // SQ))
+    if flip:
+        return chess.square(7 - file_idx, rank_idx)
+    return chess.square(file_idx, 7 - rank_idx)
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +50,6 @@ st.set_page_config(page_title="ChessLearnerBot", page_icon="♟️", layout="cen
 # ---------------------------------------------------------------------------
 
 def obtener_motor() -> MotorAjedrez:
-    """Una sola instancia de Stockfish por sesión de navegador."""
     if "motor" not in st.session_state:
         try:
             st.session_state["motor"] = MotorAjedrez()
@@ -48,9 +62,11 @@ def obtener_motor() -> MotorAjedrez:
 def iniciar_partida_nueva(color_usuario: str) -> None:
     st.session_state["tablero"] = chess.Board()
     st.session_state["color_usuario"] = color_usuario
-    st.session_state["historial_san"] = []  # para reconstruir el PGN al terminar
+    st.session_state["historial_san"] = []
     st.session_state["partida_terminada"] = False
     st.session_state["ultima_leccion"] = None
+    st.session_state.pop("selected_square", None)
+    st.session_state.pop("last_click_id", None)
 
 
 def color_usuario_es_blancas() -> bool:
@@ -91,11 +107,10 @@ def jugar_movimiento_bot(usuario: dict) -> None:
 
 
 def finalizar_partida(usuario: dict) -> None:
-    """Se llama una sola vez cuando termina la partida: guarda, analiza y actualiza estado."""
     tablero = st.session_state["tablero"]
-    resultado = tablero.result()  # '1-0', '0-1', '1/2-1/2', o '*'
+    resultado = tablero.result()
     if resultado == "*":
-        resultado = "1/2-1/2"  # fallback defensivo, no debería pasar si game_over() es True
+        resultado = "1/2-1/2"
 
     pgn_text = construir_pgn(tablero)
     color_usuario = st.session_state["color_usuario"]
@@ -135,7 +150,6 @@ def finalizar_partida(usuario: dict) -> None:
             usuario["id"], partida_id, titulo="Lección: el bot ganó 5 veces seguidas", contenido=contenido
         )
 
-    # Reflejamos el nuevo estado en la sesión sin tener que recargar de la DB.
     st.session_state["usuario"].update({
         "modo_bot": nuevo_estado["modo_bot"],
         "nivel_bot": nuevo_estado["nivel_bot"],
@@ -219,7 +233,8 @@ def panel_lateral(usuario: dict) -> None:
             st.write(f"{p['creada_en'][:10]} · {p['color_usuario']} · {p['resultado']} · nivel {p['nivel_bot']}")
 
     if st.sidebar.button("Cerrar sesión"):
-        for clave in ["usuario", "tablero", "historial_san", "color_usuario", "partida_terminada", "ultima_leccion"]:
+        for clave in ["usuario", "tablero", "historial_san", "color_usuario",
+                      "partida_terminada", "ultima_leccion", "selected_square", "last_click_id"]:
             st.session_state.pop(clave, None)
         st.rerun()
 
@@ -246,10 +261,10 @@ def elegir_color_y_empezar(usuario: dict) -> None:
 
 def panel_de_juego(usuario: dict) -> None:
     tablero: chess.Board = st.session_state["tablero"]
-    orientacion = "white" if color_usuario_es_blancas() else "black"
+    flip = not color_usuario_es_blancas()
 
     if tablero.is_game_over():
-        tablero_interactivo(tablero.fen(), orientacion, interactive=False)
+        st.image(board_to_pil(tablero, flip))
         if not st.session_state.get("partida_terminada"):
             finalizar_partida(usuario)
             st.rerun()
@@ -257,18 +272,38 @@ def panel_de_juego(usuario: dict) -> None:
         return
 
     if turno_del_usuario(tablero):
-        move_uci = tablero_interactivo(tablero.fen(), orientacion, interactive=True)
-        st.caption("Es tu turno — arrastrá o hacé clic en una pieza y luego en el destino.")
-        if move_uci:
-            try:
-                jugada = chess.Move.from_uci(move_uci)
-                if jugada in tablero.legal_moves:
-                    jugar_movimiento_usuario(jugada)
-                    st.rerun()
-            except (ValueError, AttributeError):
-                pass
+        coords = streamlit_image_coordinates(board_to_pil(tablero, flip), key="chess_click")
+        st.caption("Es tu turno — hacé clic en una pieza y luego en el destino.")
+
+        if coords:
+            click_id = (coords["x"], coords["y"])
+            if click_id != st.session_state.get("last_click_id"):
+                st.session_state["last_click_id"] = click_id
+                sq = click_to_square(coords["x"], coords["y"], flip)
+                selected = st.session_state.get("selected_square")
+
+                if selected is None:
+                    piece = tablero.piece_at(sq)
+                    if piece and piece.color == tablero.turn:
+                        st.session_state["selected_square"] = sq
+                        st.rerun()
+                else:
+                    st.session_state.pop("selected_square", None)
+                    if sq != selected:
+                        jugada = chess.Move(selected, sq)
+                        if (tablero.piece_type_at(selected) == chess.PAWN
+                                and chess.square_rank(sq) in (0, 7)):
+                            jugada = chess.Move(selected, sq, promotion=chess.QUEEN)
+                        if jugada in tablero.legal_moves:
+                            jugar_movimiento_usuario(jugada)
+                            st.rerun()
+                        else:
+                            piece = tablero.piece_at(sq)
+                            if piece and piece.color == tablero.turn:
+                                st.session_state["selected_square"] = sq
+                            st.rerun()
     else:
-        tablero_interactivo(tablero.fen(), orientacion, interactive=False)
+        st.image(board_to_pil(tablero, flip))
         st.caption("Turno del bot...")
         jugar_movimiento_bot(usuario)
         st.rerun()
@@ -299,7 +334,8 @@ def mostrar_resultado_final(usuario: dict) -> None:
         st.markdown(leccion["contenido"])
 
     if st.button("Jugar otra partida"):
-        for clave in ["tablero", "historial_san", "color_usuario", "partida_terminada", "ultima_leccion"]:
+        for clave in ["tablero", "historial_san", "color_usuario", "partida_terminada",
+                      "ultima_leccion", "selected_square", "last_click_id"]:
             st.session_state.pop(clave, None)
         st.rerun()
 
