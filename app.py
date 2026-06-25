@@ -31,15 +31,19 @@ SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
 # ---------------------------------------------------------------------------
 
 @st.cache_data(show_spinner=False)
-def _render_png(fen: str, flip: bool) -> bytes:
-    """PNG cacheado por posición — cairosvg solo corre cuando la posición cambia."""
+def _render_png(fen: str, flip: bool, selected_sq: int | None = None) -> bytes:
+    """PNG cacheado por posición + casilla seleccionada."""
     orientation = chess.BLACK if flip else chess.WHITE
-    svg = chess.svg.board(chess.Board(fen), size=SQ * 8, orientation=orientation, coordinates=False)
+    fill = {selected_sq: "#f6f669"} if selected_sq is not None else {}
+    svg = chess.svg.board(
+        chess.Board(fen), size=SQ * 8, orientation=orientation,
+        coordinates=False, fill=fill,
+    )
     return cairosvg.svg2png(bytestring=svg.encode())
 
 
-def board_to_pil(tablero: chess.Board, flip: bool) -> Image.Image:
-    return Image.open(io.BytesIO(_render_png(tablero.fen(), flip)))
+def board_to_pil(tablero: chess.Board, flip: bool, selected_sq: int | None = None) -> Image.Image:
+    return Image.open(io.BytesIO(_render_png(tablero.fen(), flip, selected_sq)))
 
 
 def click_to_square(x: int, y: int, flip: bool) -> chess.Square:
@@ -280,8 +284,8 @@ def panel_de_juego(usuario: dict) -> None:
         mostrar_resultado_final(usuario)
         return
 
-    # El tablero siempre está visible con el mismo widget (sin cambiar de st.image a otro)
-    coords = streamlit_image_coordinates(board_to_pil(tablero, flip), key="chess_click")
+    selected = st.session_state.get("selected_square")
+    coords = streamlit_image_coordinates(board_to_pil(tablero, flip, selected), key="chess_click")
 
     if turno_del_usuario(tablero):
         st.caption("Es tu turno — hacé clic en una pieza y luego en el destino.")
@@ -291,7 +295,6 @@ def panel_de_juego(usuario: dict) -> None:
             if click_id != st.session_state.get("last_click_id"):
                 st.session_state["last_click_id"] = click_id
                 sq = click_to_square(coords["x"], coords["y"], flip)
-                selected = st.session_state.get("selected_square")
 
                 if selected is None:
                     piece = tablero.piece_at(sq)
