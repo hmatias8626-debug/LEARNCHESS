@@ -5,6 +5,8 @@ python-chess. El resto de la app no debería importar chess.engine
 directamente.
 """
 
+import random
+
 import chess
 import chess.engine
 
@@ -39,36 +41,36 @@ def localizar_stockfish(ruta_personalizada: str | None = None) -> str:
     )
 
 
-# Tabla de configuración por nivel: (Skill Level Stockfish, tiempo en seg, ELO aproximado)
-# Nivel 1 = absolutamente principiante (~100 ELO), Nivel 20 = jugador fuerte (~2400 ELO)
+# (Skill Level Stockfish, tiempo seg, ELO aprox display, % movimientos aleatorios)
+# Niveles bajos: mayoría de jugadas son al azar puro → genuinamente débil
 _NIVEL_CONFIG = [
-    (0, 0.001,  100),  # 1  - movimientos casi aleatorios
-    (0, 0.003,  200),  # 2
-    (0, 0.007,  300),  # 3
-    (0, 0.01,   400),  # 4
-    (0, 0.02,   500),  # 5
-    (0, 0.05,   600),  # 6
-    (0, 0.10,   700),  # 7
-    (1, 0.10,   800),  # 8
-    (2, 0.10,   900),  # 9
-    (3, 0.15,  1000),  # 10
-    (4, 0.15,  1100),  # 11
-    (5, 0.20,  1200),  # 12
-    (6, 0.20,  1300),  # 13
-    (8, 0.25,  1500),  # 14
-    (10, 0.30, 1700),  # 15
-    (12, 0.40, 1900),  # 16
-    (14, 0.50, 2000),  # 17
-    (16, 0.70, 2100),  # 18
-    (18, 1.20, 2200),  # 19
-    (20, 2.00, 2400),  # 20
+    (0, 0.05,  100, 0.95),  # 1  — 95 % aleatorio
+    (0, 0.05,  200, 0.85),  # 2
+    (0, 0.05,  300, 0.75),  # 3
+    (0, 0.05,  400, 0.65),  # 4
+    (0, 0.05,  500, 0.55),  # 5
+    (0, 0.05,  600, 0.45),  # 6
+    (0, 0.10,  700, 0.35),  # 7
+    (0, 0.10,  800, 0.25),  # 8
+    (1, 0.10,  900, 0.15),  # 9
+    (2, 0.10, 1000, 0.05),  # 10
+    (3, 0.15, 1100, 0.00),  # 11
+    (5, 0.20, 1200, 0.00),  # 12
+    (7, 0.25, 1400, 0.00),  # 13
+    (9, 0.30, 1600, 0.00),  # 14
+    (11, 0.35, 1800, 0.00), # 15
+    (13, 0.45, 1900, 0.00), # 16
+    (15, 0.60, 2000, 0.00), # 17
+    (17, 0.80, 2100, 0.00), # 18
+    (18, 1.20, 2200, 0.00), # 19
+    (20, 2.00, 2400, 0.00), # 20
 ]
 
 
 def nivel_a_parametros_motor(nivel: int) -> dict:
     idx = max(0, min(19, nivel - 1))
-    skill, tiempo, _ = _NIVEL_CONFIG[idx]
-    return {"skill_level": skill, "time_limit": tiempo}
+    skill, tiempo, _, prob_random = _NIVEL_CONFIG[idx]
+    return {"skill_level": skill, "time_limit": tiempo, "prob_random": prob_random}
 
 
 def elo_aproximado(nivel: int) -> int:
@@ -86,6 +88,8 @@ class MotorAjedrez:
     def jugada_bot(self, tablero: chess.Board, nivel: int) -> chess.Move:
         """Devuelve la jugada que elige el bot, según su nivel actual."""
         params = nivel_a_parametros_motor(nivel)
+        if params["prob_random"] > 0 and random.random() < params["prob_random"]:
+            return random.choice(list(tablero.legal_moves))
         self.motor.configure({"Skill Level": params["skill_level"]})
         resultado = self.motor.play(tablero, chess.engine.Limit(time=params["time_limit"]))
         return resultado.move
