@@ -32,9 +32,9 @@ SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
 
 @st.cache_resource
 def _get_chess_component():
-    return st.components.v1.declare_component(
-        "chess_click", url="/app/static/chess_board.html"
-    )
+    import os
+    component_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chess_component")
+    return st.components.v1.declare_component("chess_click", path=component_dir)
 
 
 # ---------------------------------------------------------------------------

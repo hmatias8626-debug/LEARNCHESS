@@ -1,130 +1,79 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 8px; display: flex; justify-content: center; background: transparent; }
-    #board { width: 400px; }
-  </style>
-  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css" />
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { background:transparent; overflow:hidden; }
+canvas { display:block; cursor:pointer; }
+</style>
 </head>
 <body>
-  <div id="board"></div>
+<canvas id="b"></canvas>
+<script>
+var c   = document.getElementById('b');
+var ctx = c.getContext('2d');
+var SQ  = 50;
+var sel = null;
+var img = new Image();
 
-  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-  <script>
-    function toStreamlit(type, payload) {
-      window.parent.postMessage(Object.assign({ type: type }, payload), "*");
-    }
+function draw() {
+  if (!img.complete || !img.naturalWidth) return;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  if (sel !== null) {
+    ctx.fillStyle = 'rgba(246,246,105,0.6)';
+    ctx.fillRect(sel.col * SQ, sel.row * SQ, SQ, SQ);
+  }
+}
 
-    var game = new Chess();
-    var board = null;
-    var interactive = false;
-    var pendingFrom = null;   // para click-click: casilla origen seleccionada
-    var movingByDrag = false; // evita que el handler de click procese drops
+c.addEventListener('click', function(e) {
+  var r   = c.getBoundingClientRect();
+  var px  = Math.round((e.clientX - r.left) * c.width  / r.width);
+  var py  = Math.round((e.clientY - r.top)  * c.height / r.height);
+  var col = Math.floor(px / SQ);
+  var row = Math.floor(py / SQ);
+  if (sel && sel.col === col && sel.row === row) {
+    sel = null;
+  } else if (sel) {
+    sel = null;
+  } else {
+    sel = {col: col, row: row};
+  }
+  draw();
+  window.parent.postMessage(
+    {type: 'streamlit:setComponentValue', value: {x: px, y: py}}, '*'
+  );
+});
 
-    function sendMove(uci) {
-      pendingFrom = null;
-      toStreamlit("streamlit:setComponentValue", { value: uci, dataType: "json" });
-    }
+window.addEventListener('message', function(e) {
+  var d = e.data;
+  if (!d || d.type !== 'streamlit:render') return;
+  clearInterval(readyTimer);
+  var a = d.args || {};
+  SQ = a.sq || 50;
+  c.width  = SQ * 8;
+  c.height = SQ * 8;
+  if (a.sel_col !== undefined && a.sel_col >= 0) {
+    sel = {col: a.sel_col, row: a.sel_row};
+  } else {
+    sel = null;
+  }
+  if (a.img_b64) {
+    img.onload = draw;
+    img.src = 'data:image/png;base64,' + a.img_b64;
+    if (img.complete && img.naturalWidth) draw();
+  }
+  window.parent.postMessage(
+    {type: 'streamlit:setFrameHeight', height: c.height + 4}, '*'
+  );
+});
 
-    // --- Drag-and-drop ---
-
-    function onDragStart(source, piece) {
-      if (!interactive || game.game_over()) return false;
-      if (game.turn() === 'w' && piece.startsWith('b')) return false;
-      if (game.turn() === 'b' && piece.startsWith('w')) return false;
-      movingByDrag = true;
-      pendingFrom = null;
-      return true;
-    }
-
-    function onDrop(source, target) {
-      movingByDrag = false;
-      if (source === target) return 'snapback';
-      var move = game.move({ from: source, to: target, promotion: 'q' });
-      if (move === null) return 'snapback';
-      sendMove(move.from + move.to + (move.flags.indexOf('p') !== -1 ? 'q' : ''));
-    }
-
-    function onSnapEnd() {
-      board.position(game.fen());
-    }
-
-    // --- Click-click ---
-
-    $(document).on('click', '.square-55d63', function () {
-      if (!interactive || movingByDrag) {
-        movingByDrag = false;
-        return;
-      }
-      var square = $(this).data('square');
-      if (!square) return;
-
-      if (pendingFrom === null) {
-        var piece = game.get(square);
-        if (piece && piece.color === game.turn()) {
-          pendingFrom = square;
-        }
-      } else {
-        var from = pendingFrom;
-        pendingFrom = null;
-        if (from === square) return; // misma casilla: deseleccionar
-
-        var move = game.move({ from: from, to: square, promotion: 'q' });
-        if (move) {
-          board.position(game.fen());
-          sendMove(move.from + move.to + (move.flags.indexOf('p') !== -1 ? 'q' : ''));
-        } else {
-          // Si hizo clic en otra pieza propia, seleccionarla
-          var piece = game.get(square);
-          if (piece && piece.color === game.turn()) {
-            pendingFrom = square;
-          }
-        }
-      }
-    });
-
-    // --- Inicialización / actualización ---
-
-    function initBoard(fen, orientation, isInteractive) {
-      interactive = isInteractive !== false;
-      pendingFrom = null;
-
-      game = new Chess();
-      if (fen && fen !== 'start') game.load(fen);
-
-      if (!board) {
-        board = Chessboard('board', {
-          position: fen || 'start',
-          orientation: orientation || 'white',
-          draggable: true,
-          onDragStart: onDragStart,
-          onDrop: onDrop,
-          onSnapEnd: onSnapEnd,
-          pieceTheme: 'https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/img/chesspieces/wikipedia/{piece}.png'
-        });
-      } else {
-        board.position(fen || 'start', false);
-        board.orientation(orientation || 'white');
-      }
-
-      toStreamlit("streamlit:setFrameHeight", { height: document.body.scrollHeight + 16 });
-    }
-
-    // --- Protocolo Streamlit ---
-
-    window.addEventListener("message", function (event) {
-      if (event.data && event.data.type === "streamlit:render") {
-        var args = event.data.args || {};
-        initBoard(args.fen, args.orientation, args.interactive);
-      }
-    });
-
-    toStreamlit("streamlit:componentReady", { apiVersion: 1 });
-  </script>
+// Reintentar hasta recibir el primer render
+var readyTimer = setInterval(function() {
+  window.parent.postMessage({type: 'streamlit:componentReady', apiVersion: 1}, '*');
+}, 50);
+window.parent.postMessage({type: 'streamlit:componentReady', apiVersion: 1}, '*');
+</script>
 </body>
 </html>
