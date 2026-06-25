@@ -1,9 +1,10 @@
 """
 bot_logic.py
-"Cerebro" simple del bot, sin IA avanzada ni redes neuronales:
-- analiza una partida jugada con Stockfish y detecta los errores del usuario
-- actualiza rachas, modo (learning/coaching) y nivel del bot
-- genera el contenido de una lección en base a los errores detectados
+Lógica de aprendizaje mutuo:
+- El bot aprende cuando el usuario le gana 5 veces seguidas
+  (Stockfish analiza los errores del bot y sube su nivel)
+- El usuario recibe una lección cuando el bot le gana 3 veces seguidas
+  (el bot le muestra los errores del usuario)
 """
 
 import io
@@ -13,9 +14,9 @@ import chess.pgn
 
 from chess_engine import MotorAjedrez
 
-UMBRAL_ERROR_CP = 150       # pérdida de centipawns a partir de la cual consideramos "error"
-RACHA_BOT_PARA_COACHING = 5  # 5 derrotas seguidas del usuario -> modo entrenador
-RACHA_USUARIO_PARA_LEARNING = 3  # 3 victorias seguidas del usuario -> vuelve a aprendizaje + sube nivel
+UMBRAL_ERROR_CP = 150
+RACHA_USUARIO_PARA_MEJORAR_BOT = 5   # usuario gana 5 seguidas → bot aprende y sube nivel
+RACHA_BOT_PARA_LECCION_USUARIO  = 3  # bot gana 3 seguidas → usuario recibe lección
 
 
 # ---------------------------------------------------------------------------
@@ -23,19 +24,21 @@ RACHA_USUARIO_PARA_LEARNING = 3  # 3 victorias seguidas del usuario -> vuelve a 
 # ---------------------------------------------------------------------------
 
 def analizar_partida(pgn_text: str, motor: MotorAjedrez, color_usuario: str,
-                      tiempo_analisis: float = 0.3) -> tuple[list[dict], list[dict]]:
+                     tiempo_analisis: float = 0.3) -> tuple[list[dict], list[dict], list[dict]]:
     """
-    Recorre la partida jugada moviendo un tablero desde el inicio,
-    evalúa cada posición con Stockfish y devuelve:
-      - movimientos_info: lista para guardar en la tabla `movimientos`
-      - errores_usuario: lista de errores del USUARIO (no del bot) para
-        guardar en `errores_frecuentes`, con la mejor jugada alternativa.
+    Recorre la partida y evalúa cada posición con Stockfish.
+    Devuelve:
+      - movimientos_info : para la tabla `movimientos`
+      - errores_usuario  : errores cometidos por el usuario
+      - errores_bot      : errores cometidos por el bot (usados cuando el bot "aprende")
     """
     juego = chess.pgn.read_game(io.StringIO(pgn_text))
     tablero = juego.board()
+    color_bot = "negras" if color_usuario == "blancas" else "blancas"
 
     movimientos_info: list[dict] = []
-    errores_usuario: list[dict] = []
+    errores_usuario:  list[dict] = []
+    errores_bot:      list[dict] = []
 
     eval_anterior = motor.evaluar_posicion(tablero, tiempo_analisis) or 0
     numero_jugada = 1
@@ -46,17 +49,14 @@ def analizar_partida(pgn_text: str, motor: MotorAjedrez, color_usuario: str,
         uci = jugada.uci()
         fen_antes = tablero.fen()
 
-        # Si la jugada fue del usuario, guardamos la mejor alternativa
-        # ANTES de jugar, para poder mostrarla en la lección.
         mejor_jugada_san = None
-        if color_que_mueve == color_usuario:
-            mejor = motor.mejor_jugada(tablero, tiempo_analisis)
-            if mejor is not None:
-                mejor_jugada_san = tablero.san(mejor)
+        mejor = motor.mejor_jugada(tablero, tiempo_analisis)
+        if mejor is not None:
+            mejor_jugada_san = tablero.san(mejor)
 
         tablero.push(jugada)
         eval_actual = motor.evaluar_posicion(tablero, tiempo_analisis)
-        if eval_actual is None:  # posición de mate u otra rareza puntual
+        if eval_actual is None:
             eval_actual = eval_anterior
 
         if color_que_mueve == "blancas":
@@ -75,53 +75,44 @@ def analizar_partida(pgn_text: str, motor: MotorAjedrez, color_usuario: str,
             "es_error": bool(es_error),
         })
 
-        if es_error and color_que_mueve == color_usuario:
-            errores_usuario.append({
+        if es_error:
+            entrada = {
                 "tipo_error": "error_tactico" if perdida_cp < 300 else "error_grave",
                 "fen": fen_antes,
                 "san_jugado": san,
                 "san_mejor": mejor_jugada_san,
                 "perdida_centipawns": int(perdida_cp),
-            })
+            }
+            if color_que_mueve == color_usuario:
+                errores_usuario.append(entrada)
+            elif color_que_mueve == color_bot:
+                errores_bot.append(entrada)
 
         eval_anterior = eval_actual
         if color_que_mueve == "negras":
             numero_jugada += 1
 
-    return movimientos_info, errores_usuario
+    return movimientos_info, errores_usuario, errores_bot
 
 
 # ---------------------------------------------------------------------------
-# Rachas, modo y nivel
+# Rachas y nivel
 # ---------------------------------------------------------------------------
 
 def actualizar_rachas_y_modo(estado_usuario: dict, resultado: str, color_usuario: str) -> dict:
     """
-    estado_usuario: dict con modo_bot, nivel_bot, racha_victorias_usuario,
-    racha_victorias_bot (tal cual vienen de la tabla `usuarios`).
-    resultado: '1-0' | '0-1' | '1/2-1/2'
-    color_usuario: 'blancas' | 'negras'
-
-    Devuelve un nuevo dict con el estado actualizado más la clave
-    'generar_leccion' (bool) para saber si hay que crear una lección.
-
-    Reglas (las pedidas):
-      - Bot gana 5 seguidas  -> modo='coaching', nivel se congela, se genera lección.
-      - Usuario gana 3 seguidas -> modo='learning', nivel +1 (sube "levemente").
-      - Mientras está en modo 'coaching', el nivel no cambia salvo por la
-        regla de arriba (eso es "congelar aprendizaje").
+    Reglas:
+      - Usuario gana 5 seguidas → bot sube nivel (aprendió de sus errores con Stockfish).
+      - Bot gana 3 seguidas     → se genera lección para el usuario.
     """
-    modo = estado_usuario["modo_bot"]
-    nivel = estado_usuario["nivel_bot"]
+    nivel       = estado_usuario["nivel_bot"]
     racha_usuario = estado_usuario["racha_victorias_usuario"]
-    racha_bot = estado_usuario["racha_victorias_bot"]
+    racha_bot     = estado_usuario["racha_victorias_bot"]
 
     gano_usuario = (resultado == "1-0" and color_usuario == "blancas") or (
-        resultado == "0-1" and color_usuario == "negras"
-    )
-    gano_bot = (resultado == "1-0" and color_usuario == "negras") or (
-        resultado == "0-1" and color_usuario == "blancas"
-    )
+                   resultado == "0-1" and color_usuario == "negras")
+    gano_bot     = (resultado == "1-0" and color_usuario == "negras") or (
+                   resultado == "0-1" and color_usuario == "blancas")
 
     if gano_usuario:
         racha_usuario += 1
@@ -129,63 +120,75 @@ def actualizar_rachas_y_modo(estado_usuario: dict, resultado: str, color_usuario
     elif gano_bot:
         racha_bot += 1
         racha_usuario = 0
-    else:  # tablas: no suman racha de nadie
+    else:
         racha_usuario = 0
         racha_bot = 0
 
-    generar_leccion = False
+    generar_leccion_usuario = False
+    generar_leccion_bot     = False
 
-    if racha_bot >= RACHA_BOT_PARA_COACHING:
-        modo = "coaching"
-        generar_leccion = True
-        racha_bot = 0  # reiniciamos el contador para no disparar de nuevo en cada partida
+    if racha_bot >= RACHA_BOT_PARA_LECCION_USUARIO:
+        generar_leccion_usuario = True
+        racha_bot = 0
 
-    if racha_usuario >= RACHA_USUARIO_PARA_LEARNING:
-        modo = "learning"
-        nivel = min(20, nivel + 1)  # sube "levemente": de a 1 nivel, con techo en 20
+    if racha_usuario >= RACHA_USUARIO_PARA_MEJORAR_BOT:
+        nivel = min(20, nivel + 1)
+        generar_leccion_bot = True
         racha_usuario = 0
 
     return {
-        "modo_bot": modo,
         "nivel_bot": nivel,
         "racha_victorias_usuario": racha_usuario,
         "racha_victorias_bot": racha_bot,
-        "generar_leccion": generar_leccion,
+        "generar_leccion_usuario": generar_leccion_usuario,
+        "generar_leccion_bot": generar_leccion_bot,
     }
 
 
 # ---------------------------------------------------------------------------
-# Generación de lecciones (basada en reglas, sin IA avanzada)
+# Generación de lecciones
 # ---------------------------------------------------------------------------
 
-def generar_contenido_leccion(errores: list[dict]) -> str:
-    """
-    Texto simple basado en los errores detectados en la partida que
-    disparó el modo coaching. No usa modelos de lenguaje: es una
-    plantilla que ordena los errores por gravedad.
-    """
+def generar_contenido_leccion_usuario(errores: list[dict]) -> str:
+    """Lección para el usuario tras 3 victorias consecutivas del bot."""
     if not errores:
         return (
-            "Esta partida no tuvo errores tácticos claros según Stockfish, "
-            "pero el bot viene ganando seguido: probá variar tus aperturas "
-            "y prestar atención a piezas que queden sin defensa."
+            "El bot ganó 3 veces seguidas pero no encontró errores tácticos claros. "
+            "Probá mejorar tus aperturas y controlar el centro desde el principio."
         )
 
-    errores_ordenados = sorted(errores, key=lambda e: e["perdida_centipawns"], reverse=True)
-    top = errores_ordenados[:3]
-
-    lineas = ["Estos fueron tus momentos más débiles en la partida que disparó el modo entrenador:", ""]
-    for i, err in enumerate(top, start=1):
+    top = sorted(errores, key=lambda e: e["perdida_centipawns"], reverse=True)[:3]
+    lineas = ["El bot ganó 3 partidas seguidas. Estos fueron tus errores más costosos:", ""]
+    for i, err in enumerate(top, 1):
         mejor = err.get("san_mejor") or "(sin sugerencia)"
         lineas.append(
-            f"{i}. Jugaste **{err['san_jugado']}**, que perdió aproximadamente "
-            f"{err['perdida_centipawns']} centipawns. La jugada recomendada era **{mejor}**.\n"
-            f"   FEN antes de la jugada: `{err['fen']}`"
+            f"{i}. Jugaste **{err['san_jugado']}** (−{err['perdida_centipawns']} cp). "
+            f"La mejor jugada era **{mejor}**.\n"
+            f"   Posición: `{err['fen']}`"
         )
+    lineas += ["", "Consejo: antes de mover revisá si tu pieza queda atacada y si hay capturas disponibles para el rival."]
+    return "\n".join(lineas)
 
+
+def generar_contenido_leccion_bot(errores_bot: list[dict], nivel_nuevo: int) -> str:
+    """Mensaje para el usuario mostrando qué aprendió el bot tras 5 derrotas consecutivas."""
+    lineas = [
+        f"¡Ganaste 5 partidas seguidas! Stockfish analizó los errores del bot y lo entrenó. "
+        f"Ahora juega en **nivel {nivel_nuevo}**.",
+        ""
+    ]
+    if not errores_bot:
+        lineas.append("El bot no cometió errores tácticos claros, pero igual sube de nivel por tu racha.")
+        return "\n".join(lineas)
+
+    top = sorted(errores_bot, key=lambda e: e["perdida_centipawns"], reverse=True)[:3]
+    lineas.append("Estos fueron los peores errores del bot que Stockfish le señaló:")
     lineas.append("")
-    lineas.append(
-        "Consejo general: antes de mover, revisá si tu pieza queda atacada y "
-        "si hay alguna captura o jaque inmediato disponible para el rival."
-    )
+    for i, err in enumerate(top, 1):
+        mejor = err.get("san_mejor") or "(sin sugerencia)"
+        lineas.append(
+            f"{i}. El bot jugó **{err['san_jugado']}** (−{err['perdida_centipawns']} cp). "
+            f"Debería haber jugado **{mejor}**."
+        )
+    lineas += ["", "El bot intentará no repetir estos errores."]
     return "\n".join(lineas)

@@ -133,7 +133,7 @@ def finalizar_partida(usuario: dict) -> None:
     prefs = db.obtener_preferencias(usuario["id"])
     tiempo_analisis = prefs.get("tiempo_analisis_seg", 0.3)
 
-    movimientos_info, errores_usuario = bot_logic.analizar_partida(
+    movimientos_info, errores_usuario, errores_bot = bot_logic.analizar_partida(
         pgn_text, motor, color_usuario=color_usuario, tiempo_analisis=tiempo_analisis
     )
     db.guardar_movimientos(partida_id, movimientos_info)
@@ -142,21 +142,30 @@ def finalizar_partida(usuario: dict) -> None:
     nuevo_estado = bot_logic.actualizar_rachas_y_modo(usuario, resultado, color_usuario)
     db.actualizar_estado_bot(
         usuario["id"],
-        modo_bot=nuevo_estado["modo_bot"],
+        modo_bot="learning",
         nivel_bot=nuevo_estado["nivel_bot"],
         racha_victorias_usuario=nuevo_estado["racha_victorias_usuario"],
         racha_victorias_bot=nuevo_estado["racha_victorias_bot"],
     )
 
     leccion = None
-    if nuevo_estado["generar_leccion"]:
-        contenido = bot_logic.generar_contenido_leccion(errores_usuario)
+    if nuevo_estado["generar_leccion_usuario"]:
+        contenido = bot_logic.generar_contenido_leccion_usuario(errores_usuario)
         leccion = db.guardar_leccion(
-            usuario["id"], partida_id, titulo="Lección: el bot ganó 5 veces seguidas", contenido=contenido
+            usuario["id"], partida_id,
+            titulo="El bot te enseña: corregí tus errores",
+            contenido=contenido,
+        )
+    if nuevo_estado["generar_leccion_bot"]:
+        contenido = bot_logic.generar_contenido_leccion_bot(errores_bot, nuevo_estado["nivel_bot"])
+        leccion = db.guardar_leccion(
+            usuario["id"], partida_id,
+            titulo=f"El bot aprendio y subio al nivel {nuevo_estado['nivel_bot']}",
+            contenido=contenido,
         )
 
     st.session_state["usuario"].update({
-        "modo_bot": nuevo_estado["modo_bot"],
+        "modo_bot": "learning",
         "nivel_bot": nuevo_estado["nivel_bot"],
         "racha_victorias_usuario": nuevo_estado["racha_victorias_usuario"],
         "racha_victorias_bot": nuevo_estado["racha_victorias_bot"],
@@ -208,18 +217,13 @@ def pantalla_login() -> None:
 def panel_lateral(usuario: dict) -> None:
     st.sidebar.title(f"Hola, {usuario['username']} 👋")
 
-    modo_legible = "🧠 Aprendizaje" if usuario["modo_bot"] == "learning" else "🎓 Entrenador (coaching)"
-    st.sidebar.metric("Modo del bot", modo_legible)
     st.sidebar.metric("Nivel del bot", f"{usuario['nivel_bot']}  (~{elo_aproximado(usuario['nivel_bot'])} ELO)")
-    col1, col2 = st.sidebar.columns(2)
-    col1.metric("Tu racha", usuario["racha_victorias_usuario"])
-    col2.metric("Racha del bot", usuario["racha_victorias_bot"])
 
-    if usuario["modo_bot"] == "coaching":
-        st.sidebar.info(
-            "El bot está en modo entrenador: el nivel queda congelado hasta que "
-            "ganes 3 partidas seguidas."
-        )
+    racha_u = usuario["racha_victorias_usuario"]
+    racha_b = usuario["racha_victorias_bot"]
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("Tu racha", f"{racha_u}/5", help="Al ganar 5 seguidas, Stockfish entrena al bot y sube de nivel")
+    col2.metric("Racha del bot", f"{racha_b}/3", help="Si el bot gana 3 seguidas, te muestra tus errores")
 
     with st.sidebar.expander("📚 Lecciones"):
         lecciones = db.obtener_lecciones(usuario["id"])
