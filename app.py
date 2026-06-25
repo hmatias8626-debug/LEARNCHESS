@@ -19,7 +19,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 import auth
 import db
 import bot_logic
-from chess_engine import MotorAjedrez
+from chess_engine import MotorAjedrez, elo_aproximado
 
 st.set_page_config(page_title="ChessLearnerBot", page_icon="♟️", layout="centered")
 
@@ -210,7 +210,7 @@ def panel_lateral(usuario: dict) -> None:
 
     modo_legible = "🧠 Aprendizaje" if usuario["modo_bot"] == "learning" else "🎓 Entrenador (coaching)"
     st.sidebar.metric("Modo del bot", modo_legible)
-    st.sidebar.metric("Nivel del bot", usuario["nivel_bot"])
+    st.sidebar.metric("Nivel del bot", f"{usuario['nivel_bot']}  (~{elo_aproximado(usuario['nivel_bot'])} ELO)")
     col1, col2 = st.sidebar.columns(2)
     col1.metric("Tu racha", usuario["racha_victorias_usuario"])
     col2.metric("Racha del bot", usuario["racha_victorias_bot"])

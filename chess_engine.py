@@ -39,15 +39,41 @@ def localizar_stockfish(ruta_personalizada: str | None = None) -> str:
     )
 
 
+# Tabla de configuración por nivel: (Skill Level Stockfish, tiempo en seg, ELO aproximado)
+# Nivel 1 = principiante absoluto (~400 ELO), Nivel 20 = jugador fuerte (~2400 ELO)
+_NIVEL_CONFIG = [
+    (0, 0.01,  400),  # 1
+    (0, 0.02,  500),  # 2
+    (0, 0.05,  600),  # 3
+    (0, 0.10,  700),  # 4
+    (1, 0.10,  800),  # 5
+    (2, 0.10,  900),  # 6
+    (3, 0.15, 1000),  # 7
+    (4, 0.15, 1100),  # 8
+    (5, 0.20, 1200),  # 9
+    (6, 0.20, 1300),  # 10
+    (7, 0.25, 1400),  # 11
+    (8, 0.25, 1500),  # 12
+    (9, 0.30, 1600),  # 13
+    (11, 0.35, 1700),  # 14
+    (13, 0.40, 1800),  # 15
+    (14, 0.50, 1900),  # 16
+    (15, 0.60, 2000),  # 17
+    (17, 0.80, 2100),  # 18
+    (18, 1.20, 2200),  # 19
+    (20, 2.00, 2400),  # 20
+]
+
+
 def nivel_a_parametros_motor(nivel: int) -> dict:
-    """
-    Traduce el 'nivel del bot' (entero 1..20, simple e interpretable)
-    a parámetros de Stockfish: Skill Level (0-20) + límite de tiempo.
-    Niveles altos piensan un poquito más, además de jugar mejor.
-    """
-    skill = max(0, min(20, nivel))
-    tiempo = round(0.1 + skill * 0.03, 2)
+    idx = max(0, min(19, nivel - 1))
+    skill, tiempo, _ = _NIVEL_CONFIG[idx]
     return {"skill_level": skill, "time_limit": tiempo}
+
+
+def elo_aproximado(nivel: int) -> int:
+    idx = max(0, min(19, nivel - 1))
+    return _NIVEL_CONFIG[idx][2]
 
 
 class MotorAjedrez:
