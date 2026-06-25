@@ -5,6 +5,7 @@ ChessLearnerBot — MVP online con Streamlit + Supabase + Stockfish.
 Ejecutar con:  streamlit run app.py
 """
 
+import base64
 import io
 import random
 
@@ -14,7 +15,6 @@ import chess.pgn
 import chess.svg
 import streamlit as st
 from PIL import Image
-from streamlit_image_coordinates import streamlit_image_coordinates
 
 import auth
 import db
@@ -24,6 +24,97 @@ from chess_engine import MotorAjedrez, elo_aproximado
 st.set_page_config(page_title="ChessLearnerBot", page_icon="♟️", layout="centered")
 
 SQ = 50  # píxeles por casilla (tablero = SQ*8 x SQ*8)
+
+# ---------------------------------------------------------------------------
+# Componente canvas — highlight instantáneo sin round-trip al servidor
+# ---------------------------------------------------------------------------
+
+_CHESS_BOARD_HTML = """\
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { background:transparent; overflow:hidden; }
+canvas { display:block; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="b"></canvas>
+<script>
+var c = document.getElementById('b');
+var ctx = c.getContext('2d');
+var SQ = 50;
+var sel = null;
+var img = new Image();
+
+function draw() {
+  if (!img.complete || !img.naturalWidth) return;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  if (sel !== null) {
+    ctx.fillStyle = 'rgba(246,246,105,0.6)';
+    ctx.fillRect(sel.col * SQ, sel.row * SQ, SQ, SQ);
+  }
+}
+
+c.addEventListener('click', function(e) {
+  var r = c.getBoundingClientRect();
+  var px = Math.round((e.clientX - r.left) * c.width / r.width);
+  var py = Math.round((e.clientY - r.top) * c.height / r.height);
+  var col = Math.floor(px / SQ);
+  var row = Math.floor(py / SQ);
+  if (sel && sel.col === col && sel.row === row) {
+    sel = null;
+  } else if (sel) {
+    sel = null;
+  } else {
+    sel = {col: col, row: row};
+  }
+  draw();
+  window.parent.postMessage(
+    {type: 'streamlit:setComponentValue', value: {x: px, y: py}}, '*'
+  );
+});
+
+window.addEventListener('message', function(e) {
+  var d = e.data;
+  if (!d || d.type !== 'streamlit:render') return;
+  var a = d.args || {};
+  SQ = a.sq || 50;
+  c.width = SQ * 8;
+  c.height = SQ * 8;
+  if (a.sel_col !== undefined && a.sel_col >= 0) {
+    sel = {col: a.sel_col, row: a.sel_row};
+  } else {
+    sel = null;
+  }
+  if (a.img_b64) {
+    img.onload = draw;
+    img.src = 'data:image/png;base64,' + a.img_b64;
+    if (img.complete && img.naturalWidth) draw();
+  }
+  window.parent.postMessage(
+    {type: 'streamlit:setFrameHeight', height: c.height + 4}, '*'
+  );
+});
+
+window.parent.postMessage(
+  {type: 'streamlit:setComponentReady', apiVersion: 1}, '*'
+);
+</script>
+</body>
+</html>
+"""
+
+
+@st.cache_resource
+def _get_chess_component():
+    b64 = base64.b64encode(_CHESS_BOARD_HTML.encode()).decode()
+    return st.components.v1.declare_component(
+        "chess_click", url="data:text/html;base64," + b64
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -38,17 +129,12 @@ def _render_png(fen: str, flip: bool) -> bytes:
     return cairosvg.svg2png(bytestring=svg.encode())
 
 
-def board_to_pil(tablero: chess.Board, flip: bool, selected_sq: int | None = None) -> Image.Image:
-    img = Image.open(io.BytesIO(_render_png(tablero.fen(), flip))).convert("RGBA")
-    if selected_sq is not None:
-        from PIL import ImageDraw
-        file_idx = chess.square_file(selected_sq)
-        rank_idx = chess.square_rank(selected_sq)
-        x = ((7 - file_idx) if flip else file_idx) * SQ
-        y = (rank_idx if flip else (7 - rank_idx)) * SQ
-        draw = ImageDraw.Draw(img, "RGBA")
-        draw.rectangle([x, y, x + SQ - 1, y + SQ - 1], fill=(246, 246, 105, 150))
-    return img.convert("RGB")
+def board_to_pil(tablero: chess.Board, flip: bool) -> Image.Image:
+    return Image.open(io.BytesIO(_render_png(tablero.fen(), flip)))
+
+
+def board_to_b64(tablero: chess.Board, flip: bool) -> str:
+    return base64.b64encode(_render_png(tablero.fen(), flip)).decode()
 
 
 def click_to_square(x: int, y: int, flip: bool) -> chess.Square:
@@ -289,8 +375,25 @@ def panel_de_juego(usuario: dict) -> None:
         mostrar_resultado_final(usuario)
         return
 
+    # sel_col/sel_row le dicen al componente qué casilla resaltar según el servidor
     selected = st.session_state.get("selected_square")
-    coords = streamlit_image_coordinates(board_to_pil(tablero, flip, selected), key="chess_click")
+    if selected is not None:
+        _f = chess.square_file(selected)
+        _r = chess.square_rank(selected)
+        sel_col = (7 - _f) if flip else _f
+        sel_row = _r if flip else (7 - _r)
+    else:
+        sel_col, sel_row = -1, -1
+
+    coords = _get_chess_component()(
+        img_b64=board_to_b64(tablero, flip),
+        fen=tablero.fen(),
+        sq=SQ,
+        sel_col=sel_col,
+        sel_row=sel_row,
+        key="chess_click",
+        default=None,
+    )
 
     if turno_del_usuario(tablero):
         st.caption("Es tu turno — hacé clic en una pieza y luego en el destino.")
