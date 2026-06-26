@@ -36,6 +36,11 @@
         </div>
 
         <button id="btn-jugar" class="btn-principal">¡Jugar!</button>
+
+        <div class="seccion ranking-seccion">
+            <h2>🏆 Mejores rachas</h2>
+            <div id="ranking-lista"></div>
+        </div>
     </div>
 
     <!-- Pantalla 2: Juego -->
@@ -44,6 +49,16 @@
             <span id="info-categoria" class="etiqueta"></span>
             <span class="racha-badge">Racha: <strong id="racha-valor">0</strong></span>
         </div>
+
+        <div class="timer-container">
+            <svg class="timer-svg" viewBox="0 0 60 60">
+                <circle cx="30" cy="30" r="26" fill="none" stroke="#2a2a4a" stroke-width="4"/>
+                <circle id="timer-arc" cx="30" cy="30" r="26" fill="none" stroke="#2ecc71" stroke-width="4"
+                    stroke-linecap="round" transform="rotate(-90 30 30)"/>
+            </svg>
+            <span id="timer-countdown" class="timer-countdown">7</span>
+        </div>
+
         <div class="pregunta-container">
             <p id="pregunta-texto"></p>
         </div>
@@ -61,10 +76,21 @@
         <div class="racha-badge grande">
             Racha actual: <strong id="racha-resultado-valor">0</strong>
         </div>
+
+        <div id="guardar-racha" class="guardar-racha oculto">
+            <p>¡Racha de <strong id="racha-a-guardar">0</strong>! Guardá tu nombre:</p>
+            <div class="guardar-racha-form">
+                <input type="text" id="input-nombre" placeholder="Tu nombre" maxlength="20" autocomplete="off">
+                <button id="btn-guardar-nombre" class="btn-guardar">Guardar 💾</button>
+            </div>
+        </div>
+
+        <button id="btn-compartir" class="btn-compartir oculto">Compartir racha 📤</button>
         <button id="btn-siguiente" class="btn-principal">Siguiente pregunta</button>
         <button id="btn-volver" class="btn-secundario">Volver al inicio</button>
     </div>
 
     <script src="script.js"></script>
+    <script src="features.js"></script>
 </body>
 </html>
