@@ -1,9 +1,11 @@
-// features.js — Timer, guardar racha, ranking, compartir
+// features.js — Timer, guardar racha, ranking (Firebase), compartir
 
 const TIMER_SEGUNDOS = 7;
 let timerInterval = null;
 let timerRestante = 0;
 let rachaCortada = 0;
+
+const FIREBASE_URL = 'https://quien-fue-primero-default-rtdb.firebaseio.com/ranking';
 
 // ---------- Timer ----------
 
@@ -83,11 +85,11 @@ document.getElementById('btn-volver').addEventListener('click', detenerTimer);
 
 // ---------- Guardar nombre ----------
 
-document.getElementById('btn-guardar-nombre').addEventListener('click', () => {
+document.getElementById('btn-guardar-nombre').addEventListener('click', async () => {
     const nombre = document.getElementById('input-nombre').value.trim();
     if (!nombre) { alert('Ingresá tu nombre.'); return; }
     const r = parseInt(document.getElementById('racha-a-guardar').textContent, 10);
-    guardarEnRanking(nombre, r);
+    await guardarEnRanking(nombre, r);
     const guardarDiv = document.getElementById('guardar-racha');
     const form = guardarDiv.querySelector('.guardar-racha-form');
     if (form) form.style.display = 'none';
@@ -106,27 +108,30 @@ document.getElementById('btn-compartir').addEventListener('click', () => {
     compartirRacha(parseInt(document.getElementById('btn-compartir').dataset.racha, 10) || racha);
 });
 
-// ---------- Ranking ----------
+// ---------- Ranking (Firebase) ----------
 
-const RANKING_KEY = 'quien_primero_ranking';
-
-function obtenerRanking() {
-    try { return JSON.parse(localStorage.getItem(RANKING_KEY)) || []; } catch { return []; }
+async function obtenerRanking() {
+    try {
+        const res = await fetch(FIREBASE_URL + '.json');
+        const data = await res.json();
+        if (!data) return [];
+        return Object.values(data).sort((a, b) => b.racha - a.racha).slice(0, 5);
+    } catch { return []; }
 }
 
-function guardarEnRanking(nombre, rachaVal) {
-    const ranking = obtenerRanking();
-    ranking.push({ nombre, racha: rachaVal, fecha: new Date().toLocaleDateString('es-AR') });
-    ranking.sort((a, b) => b.racha - a.racha);
-    ranking.splice(5);
-    localStorage.setItem(RANKING_KEY, JSON.stringify(ranking));
-    mostrarRanking();
+async function guardarEnRanking(nombre, rachaVal) {
+    await fetch(FIREBASE_URL + '.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, racha: rachaVal, fecha: new Date().toLocaleDateString('es-AR') })
+    });
+    await mostrarRanking();
 }
 
-function mostrarRanking() {
+async function mostrarRanking() {
     const lista = document.getElementById('ranking-lista');
     if (!lista) return;
-    const ranking = obtenerRanking();
+    const ranking = await obtenerRanking();
     if (ranking.length === 0) {
         lista.innerHTML = '<p class="ranking-vacio">Todavía no hay registros. ¡Llegá a una racha de 3!</p>';
         return;
